@@ -19,19 +19,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v2
-
+      # ✅ MUST COME FIRST
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ap-south-1
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build, tag, and push image
         run: |
           IMAGE_TAG=${GITHUB_SHA}
+
           ECR_URI=$(aws ecr describe-repositories \
             --repository-names $ECR_REPOSITORY \
             --query 'repositories[0].repositoryUri' \
