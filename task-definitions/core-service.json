@@ -1,0 +1,21 @@
+{
+  "family": "core-service-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::730335419572:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "core-service",
+      "image": "REPLACED_BY_CICD",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 5000,
+          "protocol": "tcp"
+        }
+      ]
+    }
+  ]
+}
