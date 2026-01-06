@@ -2,9 +2,8 @@ name: Deploy Service A to ECS
 
 on:
   push:
-    branches: [ "main" ]
-    paths:
-      - "service-a/**"
+    branches: 
+      - main
 
 env:
   AWS_REGION: ap-south-1
