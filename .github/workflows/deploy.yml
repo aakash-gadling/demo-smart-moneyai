@@ -40,10 +40,7 @@ jobs:
             --output text)
 
           docker build -t $ECR_URI:$IMAGE_TAG .
-          docker tag $ECR_URI:$IMAGE_TAG $ECR_URI:latest
-
           docker push $ECR_URI:$IMAGE_TAG
-          docker push $ECR_URI:latest
 
       - name: Deploy to ECS
         run: |
