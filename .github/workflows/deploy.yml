@@ -9,9 +9,18 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
+    env:
+      AWS_REGION: ap-south-1
+      ECR_REPOSITORY: myapp
+      ECS_CLUSTER: prod-app-cluster
+      ECS_SERVICE: myapp-service
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -20,28 +29,23 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Login to ECR
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build image using docker compose
-        run: docker compose build
-
-      - name: Debug files
+      - name: Build, tag, and push image
         run: |
-          ls -la
-          cat docker-compose.yml
+          IMAGE_TAG=${GITHUB_SHA}
+          ECR_URI=$(aws ecr describe-repositories \
+            --repository-names $ECR_REPOSITORY \
+            --query 'repositories[0].repositoryUri' \
+            --output text)
 
-      - name: Tag and push image to ECR
-        run: |
-          docker tag my-app:latest \
-            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
+          docker build -t $ECR_URI:$IMAGE_TAG .
+          docker tag $ECR_URI:$IMAGE_TAG $ECR_URI:latest
 
-          docker push \
-            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
+          docker push $ECR_URI:$IMAGE_TAG
+          docker push $ECR_URI:latest
 
-      - name: Update ECS service
+      - name: Deploy to ECS
         run: |
           aws ecs update-service \
-            --cluster my-ecs-cluster \
-            --service my-app \
+            --cluster $ECS_CLUSTER \
+            --service $ECS_SERVICE \
             --force-new-deployment
