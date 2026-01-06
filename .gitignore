@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+coverage/
+
+# Prisma
+prisma/generated/
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Logs
+npm-debug.log*
+logs/
+*.log
+
+# OS / Editor
+.vscode/
+.idea/
+
+# TypeScript
+*.tsbuildinfo
+
+# NestJS / TS incremental artifacts
+src/**/*.js
+src/**/*.js.map
+
+# Cache
+.npm/
+.cache/
+
+# Tests
+reports/
+
+# Docker
+.dockerignore
+
+# Misc
+*.swp
