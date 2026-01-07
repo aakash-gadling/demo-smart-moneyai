@@ -6,7 +6,7 @@ app = Flask(__name__)
 @app.route("/")
 def home():
     return jsonify({
-        "message": "This is ECS Version 2 !!!",
+        "message": "Now This has become ECS Version 3 !!!",
         "hostname": socket.gethostname()
     })
 
