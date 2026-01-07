@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout code
+      # 1️⃣ Checkout source
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -25,53 +25,56 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # 3️⃣ Install Terraform (needed for reading state)
+      # 3️⃣ Install Terraform (ONLY for reading outputs)
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.6.6
+          terraform_wrapper: false
 
       # 4️⃣ Download Terraform remote state from S3
       - name: Download Terraform state
         run: |
           aws s3 cp s3://${{ secrets.TF_STATE_BUCKET }}/${{ secrets.TF_STATE_KEY }} terraform.tfstate
 
-      # 5️⃣ Read Terraform outputs from downloaded state
+      # 5️⃣ Read Terraform outputs safely
       - name: Read Terraform outputs
-        id: tf
         run: |
-          echo "ECR_REPO=$(terraform output -state=terraform.tfstate -raw ecr_repository_url)" >> $GITHUB_ENV
-          echo "ECS_CLUSTER=$(terraform output -state=terraform.tfstate -raw ecs_cluster_name)" >> $GITHUB_ENV
-          echo "ECS_SERVICE=$(terraform output -state=terraform.tfstate -raw ecs_service_name)" >> $GITHUB_ENV
+          echo "ECR_REPO=$(terraform output -state=terraform.tfstate -raw ecr_repository_url | tr -d '\n')" >> $GITHUB_ENV
+          echo "ECS_CLUSTER=$(terraform output -state=terraform.tfstate -raw ecs_cluster_name | tr -d '\n')" >> $GITHUB_ENV
+          echo "ECS_SERVICE=$(terraform output -state=terraform.tfstate -raw ecs_service_name | tr -d '\n')" >> $GITHUB_ENV
 
-      # 6️⃣ Login to Amazon ECR
+      # 6️⃣ Debug (optional but recommended once)
+      - name: Debug resolved values
+        run: |
+          echo "ECR_REPO=${ECR_REPO}"
+          echo "ECS_CLUSTER=${ECS_CLUSTER}"
+          echo "ECS_SERVICE=${ECS_SERVICE}"
+          echo "IMAGE=${ECR_REPO}:${GITHUB_SHA}"
+
+      # 7️⃣ Login to Amazon ECR
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      # 7️⃣ Build & push Docker image
+      # 8️⃣ Build & push Docker image
       - name: Build and push Docker image
         run: |
           IMAGE_TAG=${GITHUB_SHA}
 
-          echo "Building Docker image..."
           docker build -t core-service:${IMAGE_TAG} .
-
-          echo "Tagging for ECR..."
           docker tag core-service:${IMAGE_TAG} ${ECR_REPO}:${IMAGE_TAG}
-
-          echo "Pushing image to ECR..."
           docker push ${ECR_REPO}:${IMAGE_TAG}
 
-      # 8️⃣ Render ECS task definition with new image
+      # 9️⃣ Render ECS task definition (IMAGE FIXED)
       - name: Render ECS task definition
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition: task-definitions/core-service.json
           container-name: core-service
-          image: ${ECR_REPO}:${GITHUB_SHA}
+          image: "${{ env.ECR_REPO }}:${{ github.sha }}"
 
-      # 9️⃣ Deploy new task definition to ECS
+      # 🔟 Deploy new task definition to ECS
       - name: Deploy ECS task definition
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
