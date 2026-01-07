@@ -4,7 +4,7 @@
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "512",
   "memory": "1024",
-  "executionRoleArn": "arn:aws:iam::730335419572:role/ecsTaskExecutionRole",
+  "executionRoleArn": "arn:aws:iam::428941813025:role/ecsTaskExecutionRole",
   "containerDefinitions": [
     {
       "name": "core-service",
