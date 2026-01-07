@@ -14,7 +14,7 @@ jobs:
 
     steps:
       # 1️⃣ Checkout code
-      - name: Checkout source
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       # 2️⃣ Configure AWS credentials
@@ -25,15 +25,19 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # 3️⃣ Setup Terraform (read-only)
+      # 3️⃣ Setup Terraform CLI
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.6.6
 
-      # 4️⃣ Terraform init (remote state only)
-      - name: Terraform init (read outputs)
+      # 4️⃣ Terraform init (remote backend only)
+      - name: Terraform Init (remote state)
         run: |
+          mkdir -p tf_temp
+          cd tf_temp
+          # Dummy provider file needed for terraform init
+          echo 'provider "aws" {}' > provider.tf
           terraform init \
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
             -backend-config="key=${{ secrets.TF_STATE_KEY }}" \
@@ -44,11 +48,12 @@ jobs:
       - name: Read Terraform outputs
         id: tf
         run: |
+          cd tf_temp
           echo "ECR_REPO=$(terraform output -raw ecr_repository_url)" >> $GITHUB_ENV
           echo "ECS_CLUSTER=$(terraform output -raw ecs_cluster_name)" >> $GITHUB_ENV
           echo "ECS_SERVICE=$(terraform output -raw ecs_service_name)" >> $GITHUB_ENV
 
-      # 6️⃣ Login to ECR
+      # 6️⃣ Login to Amazon ECR
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
@@ -57,21 +62,26 @@ jobs:
         run: |
           IMAGE_TAG=${GITHUB_SHA}
 
+          echo "Building Docker image..."
           docker build -t core-service:${IMAGE_TAG} .
+
+          echo "Tagging for ECR..."
           docker tag core-service:${IMAGE_TAG} ${ECR_REPO}:${IMAGE_TAG}
+
+          echo "Pushing image to ECR..."
           docker push ${ECR_REPO}:${IMAGE_TAG}
 
-      # 8️⃣ Render new task definition (image only)
+      # 8️⃣ Render ECS task definition
       - name: Render ECS task definition
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition: task-definitions/core-service.json
           container-name: core-service
-          image: ${ECR_REPO}:${{ github.sha }}
+          image: ${ECR_REPO}:${GITHUB_SHA}
 
-      # 9️⃣ Deploy new task definition revision
-      - name: Deploy to ECS
+      # 9️⃣ Deploy new task definition to ECS
+      - name: Deploy ECS task definition
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
