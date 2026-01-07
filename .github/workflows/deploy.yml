@@ -7,53 +7,71 @@ on:
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
-  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-  ECR_REPOSITORY: core-service-repo
-  ECS_CLUSTER: core-service-ecs-cluster
-  ECS_SERVICE: core-service
-  CONTAINER_NAME: core-service
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout source code
+      # 1️⃣ Checkout code
+      - name: Checkout source
         uses: actions/checkout@v4
 
+      # 2️⃣ Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
+      # 3️⃣ Setup Terraform (read-only)
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      # 4️⃣ Terraform init (remote state only)
+      - name: Terraform init (read outputs)
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ secrets.TF_STATE_KEY }}" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="encrypt=true"
+
+      # 5️⃣ Read Terraform outputs
+      - name: Read Terraform outputs
+        id: tf
+        run: |
+          echo "ECR_REPO=$(terraform output -raw ecr_repository_url)" >> $GITHUB_ENV
+          echo "ECS_CLUSTER=$(terraform output -raw ecs_cluster_name)" >> $GITHUB_ENV
+          echo "ECS_SERVICE=$(terraform output -raw ecs_service_name)" >> $GITHUB_ENV
+
+      # 6️⃣ Login to ECR
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
+      # 7️⃣ Build & push Docker image
       - name: Build and push Docker image
         run: |
-          IMAGE_TAG=${{ github.sha }}
+          IMAGE_TAG=${GITHUB_SHA}
 
-          echo "Building Docker image..."
-          docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
+          docker build -t core-service:${IMAGE_TAG} .
+          docker tag core-service:${IMAGE_TAG} ${ECR_REPO}:${IMAGE_TAG}
+          docker push ${ECR_REPO}:${IMAGE_TAG}
 
-          echo "Tagging image for ECR..."
-          docker tag $ECR_REPOSITORY:$IMAGE_TAG \
-            $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
-
-          echo "Pushing image to ECR..."
-          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
-
-      - name: Render new ECS task definition
+      # 8️⃣ Render new task definition (image only)
+      - name: Render ECS task definition
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition: task-definitions/core-service.json
-          container-name: ${{ env.CONTAINER_NAME }}
-          image: ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          container-name: core-service
+          image: ${ECR_REPO}:${{ github.sha }}
 
-      - name: Deploy ECS task definition
+      # 9️⃣ Deploy new task definition revision
+      - name: Deploy to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
