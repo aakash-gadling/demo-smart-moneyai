@@ -25,33 +25,24 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # 3️⃣ Setup Terraform CLI
+      # 3️⃣ Install Terraform (needed for reading state)
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.6.6
 
-      # 4️⃣ Terraform init (remote backend only)
-      - name: Terraform Init (remote state)
+      # 4️⃣ Download Terraform remote state from S3
+      - name: Download Terraform state
         run: |
-          mkdir -p tf_temp
-          cd tf_temp
-          # Dummy provider file needed for terraform init
-          echo 'provider "aws" {}' > provider.tf
-          terraform init \
-            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
-            -backend-config="key=${{ secrets.TF_STATE_KEY }}" \
-            -backend-config="region=${{ env.AWS_REGION }}" \
-            -backend-config="encrypt=true"
+          aws s3 cp s3://${{ secrets.TF_STATE_BUCKET }}/${{ secrets.TF_STATE_KEY }} terraform.tfstate
 
-      # 5️⃣ Read Terraform outputs
+      # 5️⃣ Read Terraform outputs from downloaded state
       - name: Read Terraform outputs
         id: tf
         run: |
-          cd tf_temp
-          echo "ECR_REPO=$(terraform output -raw ecr_repository_url)" >> $GITHUB_ENV
-          echo "ECS_CLUSTER=$(terraform output -raw ecs_cluster_name)" >> $GITHUB_ENV
-          echo "ECS_SERVICE=$(terraform output -raw ecs_service_name)" >> $GITHUB_ENV
+          echo "ECR_REPO=$(terraform output -state=terraform.tfstate -raw ecr_repository_url)" >> $GITHUB_ENV
+          echo "ECS_CLUSTER=$(terraform output -state=terraform.tfstate -raw ecs_cluster_name)" >> $GITHUB_ENV
+          echo "ECS_SERVICE=$(terraform output -state=terraform.tfstate -raw ecs_service_name)" >> $GITHUB_ENV
 
       # 6️⃣ Login to Amazon ECR
       - name: Login to Amazon ECR
@@ -71,7 +62,7 @@ jobs:
           echo "Pushing image to ECR..."
           docker push ${ECR_REPO}:${IMAGE_TAG}
 
-      # 8️⃣ Render ECS task definition
+      # 8️⃣ Render ECS task definition with new image
       - name: Render ECS task definition
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
