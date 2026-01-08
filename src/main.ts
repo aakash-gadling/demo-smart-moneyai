@@ -28,7 +28,7 @@ async function bootstrap() {
     const port = process.env.CORE_SERVICE_PORT || process.env.PORT || 3001;
     app.useGlobalFilters(new AllExceptionsFilter());
 
-    await app.listen(port);
+    await app.listen(port, '0.0.0.0');
 
     logger.log(`Core Service running on port ${port}`);
     logger.log('Modules loaded: users, finance, goals');
